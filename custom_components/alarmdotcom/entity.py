@@ -93,7 +93,7 @@ def device_info_fn(hub: AlarmHub, resource_id: str, entity_name: str | None) -> 
         device_info["manufacturer"] = resource.attributes.manufacturer
     if resource.attributes.device_model is not None:
         device_info["model"] = resource.attributes.device_model
-    if via_device_id:
+    if via_device_id is not None and via_device_id not in ("", resource_id):
         device_info["via_device"] = (DOMAIN, via_device_id)
 
     return device_info
