@@ -101,7 +101,7 @@ def gate_supported_fn(hub: AlarmHub, resource_id: str) -> bool:
 def is_closed_fn(
     controller: pyadc.GarageDoorController | pyadc.GateController, door_id: str
 ) -> bool | None:
-    """Return whether the garage door is closed."""
+    """Return whether the cover is closed."""
     resource = controller.get(door_id)
     if resource is None:
         log.debug(
@@ -110,16 +110,77 @@ def is_closed_fn(
             type(controller).__name__,
         )
         return None
-    return resource.attributes.state in [
+
+    state = resource.attributes.state
+    desired_state = resource.attributes.desired_state
+
+    log.debug(
+        "is_closed_fn: Resource %s state=%s (value=%s), desired_state=%s (value=%s)",
+        door_id,
+        state,
+        state.value if state else None,
+        desired_state,
+        desired_state.value if desired_state else None,
+    )
+
+    return state in [
         pyadc.garage_door.GarageDoorState.CLOSED,
         pyadc.gate.GateState.CLOSED,
     ]
 
 
 @callback
-def device_class_fn() -> CoverDeviceClass:
-    """Return the device class for the garage door."""
+def is_opening_fn(
+    controller: pyadc.GarageDoorController | pyadc.GateController, door_id: str
+) -> bool:
+    """Return whether the cover is opening."""
+    resource = controller.get(door_id)
+    if resource is None:
+        return False
+
+    state = resource.attributes.state
+    desired_state = resource.attributes.desired_state
+
+    if state == desired_state or desired_state is None:
+        return False
+
+    return desired_state in [
+        pyadc.garage_door.GarageDoorState.OPEN,
+        pyadc.gate.GateState.OPEN,
+    ]
+
+
+@callback
+def is_closing_fn(
+    controller: pyadc.GarageDoorController | pyadc.GateController, door_id: str
+) -> bool:
+    """Return whether the cover is closing."""
+    resource = controller.get(door_id)
+    if resource is None:
+        return False
+
+    state = resource.attributes.state
+    desired_state = resource.attributes.desired_state
+
+    if state == desired_state or desired_state is None:
+        return False
+
+    return desired_state in [
+        pyadc.garage_door.GarageDoorState.CLOSED,
+        pyadc.gate.GateState.CLOSED,
+    ]
+
+
+@callback
+def garage_device_class_fn() -> CoverDeviceClass:
+    """Return the device class for a garage door."""
     return CoverDeviceClass.GARAGE
+
+
+@callback
+def gate_device_class_fn() -> CoverDeviceClass:
+    """Return the device class for a gate."""
+    return CoverDeviceClass.GATE
 
 
 @callback
@@ -164,16 +225,20 @@ class AdcCoverEntityDescription(
     AdcEntityDescription[AdcManagedDeviceT, AdcControllerT],
     CoverEntityDescription,
 ):
-    """Base Alarm.com garage door entity description."""
+    """Base Alarm.com cover entity description."""
 
     is_closed_fn: Callable[[AdcControllerT, str], bool | None]
-    """Return whether the garage door is closed."""
+    """Return whether the cover is closed."""
+    is_opening_fn: Callable[[AdcControllerT, str], bool]
+    """Return whether the cover is opening."""
+    is_closing_fn: Callable[[AdcControllerT, str], bool]
+    """Return whether the cover is closing."""
     device_class_fn: Callable[[], CoverDeviceClass]
-    """Return the device class for the garage door."""
+    """Return the device class for the cover."""
     supported_features_fn: Callable[[], CoverEntityFeature]
-    """Return the supported features for the garage door."""
+    """Return the supported features for the cover."""
     control_fn: Callable[[AdcControllerT, str, str], Coroutine[Any, Any, None]]
-    """Open or close the garage door."""
+    """Open or close the cover."""
 
 
 ENTITY_DESCRIPTIONS: list[AdcEntityDescription] = [
@@ -182,7 +247,9 @@ ENTITY_DESCRIPTIONS: list[AdcEntityDescription] = [
         controller_fn=lambda hub, _: hub.api.garage_doors,
         supported_fn=garage_door_supported_fn,
         is_closed_fn=is_closed_fn,
-        device_class_fn=device_class_fn,
+        is_opening_fn=is_opening_fn,
+        is_closing_fn=is_closing_fn,
+        device_class_fn=garage_device_class_fn,
         supported_features_fn=supported_features_fn,
         control_fn=control_fn,
     ),
@@ -191,7 +258,9 @@ ENTITY_DESCRIPTIONS: list[AdcEntityDescription] = [
         controller_fn=lambda hub, _: hub.api.gates,
         supported_fn=gate_supported_fn,
         is_closed_fn=is_closed_fn,
-        device_class_fn=device_class_fn,
+        is_opening_fn=is_opening_fn,
+        is_closing_fn=is_closing_fn,
+        device_class_fn=gate_device_class_fn,
         supported_features_fn=supported_features_fn,
         control_fn=control_fn,
     ),
@@ -232,6 +301,12 @@ class AdcCoverEntity(AdcEntity[AdcManagedDeviceT, AdcControllerT], CoverEntity):
             self._attr_is_closed = self.entity_description.is_closed_fn(
                 self.controller, self.resource_id
             )
+            self._attr_is_opening = self.entity_description.is_opening_fn(
+                self.controller, self.resource_id
+            )
+            self._attr_is_closing = self.entity_description.is_closing_fn(
+                self.controller, self.resource_id
+            )
 
         self._attr_device_class = self.entity_description.device_class_fn()
         self._attr_supported_features = self.entity_description.supported_features_fn()
@@ -255,6 +330,12 @@ class AdcCoverEntity(AdcEntity[AdcManagedDeviceT, AdcControllerT], CoverEntity):
                 self._attr_is_closed = None
             else:
                 self._attr_is_closed = self.entity_description.is_closed_fn(
+                    self.controller, self.resource_id
+                )
+                self._attr_is_opening = self.entity_description.is_opening_fn(
+                    self.controller, self.resource_id
+                )
+                self._attr_is_closing = self.entity_description.is_closing_fn(
                     self.controller, self.resource_id
                 )
 
