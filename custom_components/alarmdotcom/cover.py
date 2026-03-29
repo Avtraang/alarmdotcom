@@ -40,14 +40,16 @@ async def async_setup_entry(
     hub: AlarmHub = hass.data[DOMAIN][config_entry.entry_id][DATA_HUB]
 
     # Log discovered devices for debugging
+    garage_door_list = list(hub.api.garage_doors)
+    gate_list = list(hub.api.gates)
     log.debug(
         "Setting up cover platform. Found %d garage doors and %d gates.",
-        len(hub.api.garage_doors),
-        len(hub.api.gates),
+        len(garage_door_list),
+        len(gate_list),
     )
-    for device in hub.api.garage_doors:
+    for device in garage_door_list:
         log.debug("  - Garage door: %s (ID: %s)", device.name, device.id)
-    for device in hub.api.gates:
+    for device in gate_list:
         log.debug("  - Gate: %s (ID: %s)", device.name, device.id)
 
     entities = [
